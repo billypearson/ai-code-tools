@@ -34,9 +34,9 @@ RUN npx get-shit-done-cc --claude --global
 RUN npx get-shit-done-cc --gemini --global
 RUN npx get-shit-done-cc --codex --global
 
-COPY requirements.txt requirements.txt
-RUN python3 -m pip install --upgrade pip && \
-    pip install -r requirements.txt
+# COPY requirements.txt requirements.txt
+# RUN python3 -m pip install --upgrade pip && \
+#     pip install -r requirements.txt
 
 # copy entrypoint
 COPY frontdoor.sh /frontdoor.sh
