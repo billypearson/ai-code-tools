@@ -7,7 +7,7 @@ usage() {
 }
 
 log() {
-  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
 }
 
 require_cmd() {
@@ -77,17 +77,17 @@ get_tailscale_authkey() {
       }
     }')
 
-    RESPONSE=$(curl -sS -X POST \
+    RESPONSE=$(curl -fsS -X POST \
       "https://api.tailscale.com/api/v2/tailnet/${TS_TAILNET}/keys" \
       -u "${TS_API_KEY}:" \
       -H "Content-Type: application/json" \
       -d "${PAYLOAD}")
 
-    KEY=$(echo "${RESPONSE}" | jq -r '.key // empty')
+    KEY=$(printf '%s' "${RESPONSE}" | jq -r '.key // empty')
 
     if [ -z "${KEY}" ]; then
       echo "Failed to generate Tailscale auth key" >&2
-      echo "Response: ${RESPONSE}" >&2
+      printf 'Response: %s\n' "${RESPONSE}" >&2
       exit 1
     fi
 
