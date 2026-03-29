@@ -39,8 +39,8 @@ RUN npx get-shit-done-cc --codex --global
 #     pip install -r requirements.txt
 
 # copy entrypoint
-COPY frontdoor.sh /frontdoor.sh
-RUN chmod +x /frontdoor.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
     chmod 700 /root/.ssh && \
