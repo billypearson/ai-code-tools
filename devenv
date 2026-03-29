@@ -28,6 +28,7 @@ BRANCH="$3"
 
 require_cmd podman
 require_cmd jq
+require_cmd curl
 
 OWNER="${REPO%/*}"
 NAME="${REPO#*/}"
@@ -45,19 +46,56 @@ TS_HOSTNAME="${DEVENV_TS_HOSTNAME:-${POD_NAME}}"
 WORKDIR="/workspace"
 REPO_DIR="${WORKDIR}/repo"
 
-# You can replace this function with your own API call.
 get_tailscale_authkey() {
+  # Priority 1: direct auth key provided
   if [ -n "${TS_AUTHKEY:-}" ]; then
     printf '%s\n' "${TS_AUTHKEY}"
     return 0
   fi
 
+  # Priority 2: file-based auth key
   if [ -n "${TAILSCALE_AUTHKEY_FILE:-}" ] && [ -f "${TAILSCALE_AUTHKEY_FILE}" ]; then
     cat "${TAILSCALE_AUTHKEY_FILE}"
     return 0
   fi
 
-  echo "TS_AUTHKEY or TAILSCALE_AUTHKEY_FILE must be set" >&2
+  # Priority 3: generate via Tailscale API
+  if [ -n "${TS_API_KEY:-}" ] && [ -n "${TS_TAILNET:-}" ]; then
+    log "Generating Tailscale auth key via API for tailnet ${TS_TAILNET}"
+
+    # Build request payload (ephemeral=false for durable node)
+    PAYLOAD=$(jq -n '{
+      capabilities: {
+        devices: {
+          create: {
+            reusable: false,
+            ephemeral: false,
+            preauthorized: true,
+            tags: []
+          }
+        }
+      }
+    }')
+
+    RESPONSE=$(curl -sS -X POST \
+      "https://api.tailscale.com/api/v2/tailnet/${TS_TAILNET}/keys" \
+      -u "${TS_API_KEY}:" \
+      -H "Content-Type: application/json" \
+      -d "${PAYLOAD}")
+
+    KEY=$(echo "${RESPONSE}" | jq -r '.key // empty')
+
+    if [ -z "${KEY}" ]; then
+      echo "Failed to generate Tailscale auth key" >&2
+      echo "Response: ${RESPONSE}" >&2
+      exit 1
+    fi
+
+    printf '%s\n' "${KEY}"
+    return 0
+  fi
+
+  echo "TS_AUTHKEY, TAILSCALE_AUTHKEY_FILE, or (TS_API_KEY + TS_TAILNET) must be set" >&2
   exit 1
 }
 

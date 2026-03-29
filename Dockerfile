@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     mosh \
     jq \
+    openssh-client \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Create venv
@@ -32,13 +34,18 @@ RUN npx get-shit-done-cc --claude --global
 RUN npx get-shit-done-cc --gemini --global
 RUN npx get-shit-done-cc --codex --global
 
-copy requirements.txt requirements.txt
+COPY requirements.txt requirements.txt
 RUN python3 -m pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+RUN mkdir -p /root/.ssh /workspace && \
+    chmod 700 /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts && \
+    chmod 644 /root/.ssh/known_hosts
 
 RUN curl -fsSL https://tailscale.com/install.sh | sh && \
     rm -rf /var/lib/apt/lists/*
