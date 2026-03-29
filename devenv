@@ -41,7 +41,7 @@ CTR_NAME="${POD_NAME}-workspace"
 TS_VOL="${POD_NAME}-ts"
 WORK_VOL="${POD_NAME}-work"
 
-IMAGE="${DEVENV_IMAGE:-docker.io/viper799/ai-code-tools:latest}"
+IMAGE="${DEVENV_IMAGE:-docker.io/viper799/ai-cli-tools:latest}"
 TS_HOSTNAME="${DEVENV_TS_HOSTNAME:-${POD_NAME}}"
 WORKDIR="/workspace"
 REPO_DIR="${WORKDIR}/repo"
