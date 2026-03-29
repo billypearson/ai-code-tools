@@ -43,9 +43,29 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
-    chmod 700 /root/.ssh && \
-    ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    chmod 644 /root/.ssh/known_hosts
+    chmod 700 /root/.ssh
+
+RUN cat <<'EOF' >/etc/profile.d/git-prompt.sh
+parse_git_branch() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local branch
+  branch="$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)"
+  [ -n "$branch" ] && printf ' (%s)' "$branch"
+}
+
+set_git_prompt() {
+  local reset='\[\e[0m\]'
+  local green='\[\e[0;32m\]'
+  local blue='\[\e[0;34m\]'
+  local yellow='\[\e[0;33m\]'
+  PS1="${green}\u@\h${reset}:${blue}\w${yellow}\$(parse_git_branch)${reset}\\$ "
+}
+
+case "$-" in
+  *i*) set_git_prompt ;;
+  *) ;;
+esac
+EOF
 
 RUN curl -fsSL https://tailscale.com/install.sh | sh && \
     rm -rf /var/lib/apt/lists/*

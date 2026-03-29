@@ -91,6 +91,16 @@ prepare_git_ssh() {
       chmod 644 /root/.ssh/known_hosts || true
     fi
   fi
+
+  if [ -f /etc/profile.d/git-prompt.sh ] && [ ! -f /root/.bashrc ]; then
+    cat <<'EOF' >/root/.bashrc
+if [ -f /etc/profile.d/git-prompt.sh ]; then
+  . /etc/profile.d/git-prompt.sh
+fi
+EOF
+  elif [ -f /etc/profile.d/git-prompt.sh ] && ! grep -q 'git-prompt.sh' /root/.bashrc 2>/dev/null; then
+    printf '\nif [ -f /etc/profile.d/git-prompt.sh ]; then\n  . /etc/profile.d/git-prompt.sh\nfi\n' >> /root/.bashrc
+  fi
 }
 
 clone_or_update_repo() {
@@ -147,7 +157,7 @@ bootstrap_zellij() {
 show_connection_info() {
   local name="${TS_HOSTNAME}"
   log "Connect with: ssh root@${name}"
-  log "Then attach with: zellij attach ${ZELLIJ_SESSION}"
+  log "Then attach with: zellij attach ${ZELLIJ_SESSION}  # prompt will show cwd and git branch when inside a repo"
 }
 
 main() {
