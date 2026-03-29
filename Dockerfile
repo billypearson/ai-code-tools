@@ -39,8 +39,8 @@ RUN python3 -m pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # copy entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY frontdoor.sh /frontdoor.sh
+RUN chmod +x /frontdoor.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
     chmod 700 /root/.ssh && \
@@ -54,4 +54,4 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh && \
 WORKDIR /workspace
 
 # Default shell
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/frontdoor.sh"]
