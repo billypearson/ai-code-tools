@@ -130,6 +130,7 @@ up() {
     --name "${CTR_NAME}" \
     --pod "${POD_NAME}" \
     --restart unless-stopped \
+    --pull=always \
     --cap-add NET_ADMIN \
     --cap-add NET_RAW \
     --device /dev/net/tun \
