@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+usage() {
+  echo "Usage: devenv <up|down> <repo> <branch>"
+  echo "Example: devenv up Pearson-Foundry/mpm-gsd main"
+}
+
+log() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+if [ "$#" -ne 3 ]; then
+  usage
+  exit 1
+fi
+
+ACTION="$1"
+REPO="$2"
+BRANCH="$3"
+
+require_cmd podman
+require_cmd jq
+
+OWNER="${REPO%/*}"
+NAME="${REPO#*/}"
+
+SAFE_REPO="$(printf '%s' "${REPO}" | tr '/:@' '---' | tr -cd '[:alnum:]-_.')"
+SAFE_BRANCH="$(printf '%s' "${BRANCH}" | tr '/:@' '---' | tr -cd '[:alnum:]-_.')"
+
+POD_NAME="devenv-${SAFE_REPO}-${SAFE_BRANCH}"
+CTR_NAME="${POD_NAME}-workspace"
+TS_VOL="${POD_NAME}-ts"
+WORK_VOL="${POD_NAME}-work"
+
+IMAGE="${DEVENV_IMAGE:-localhost/ai-code-tools:latest}"
+TS_HOSTNAME="${DEVENV_TS_HOSTNAME:-${POD_NAME}}"
+WORKDIR="/workspace"
+REPO_DIR="${WORKDIR}/repo"
+
+# You can replace this function with your own API call.
+get_tailscale_authkey() {
+  if [ -n "${TS_AUTHKEY:-}" ]; then
+    printf '%s\n' "${TS_AUTHKEY}"
+    return 0
+  fi
+
+  if [ -n "${TAILSCALE_AUTHKEY_FILE:-}" ] && [ -f "${TAILSCALE_AUTHKEY_FILE}" ]; then
+    cat "${TAILSCALE_AUTHKEY_FILE}"
+    return 0
+  fi
+
+  echo "TS_AUTHKEY or TAILSCALE_AUTHKEY_FILE must be set" >&2
+  exit 1
+}
+
+ensure_pod() {
+  if ! podman pod exists "${POD_NAME}"; then
+    podman pod create --name "${POD_NAME}" >/dev/null
+  fi
+}
+
+ensure_volumes() {
+  podman volume exists "${TS_VOL}" || podman volume create "${TS_VOL}" >/dev/null
+  podman volume exists "${WORK_VOL}" || podman volume create "${WORK_VOL}" >/dev/null
+}
+
+up() {
+  local ts_authkey
+  ts_authkey="$(get_tailscale_authkey)"
+
+  ensure_pod
+  ensure_volumes
+
+  if podman container exists "${CTR_NAME}"; then
+    log "Container already exists, starting it"
+    podman start "${CTR_NAME}" >/dev/null || true
+    podman pod start "${POD_NAME}" >/dev/null || true
+    return 0
+  fi
+
+  log "Creating ${CTR_NAME}"
+
+  podman run -d \
+    --name "${CTR_NAME}" \
+    --pod "${POD_NAME}" \
+    --restart unless-stopped \
+    --cap-add NET_ADMIN \
+    --cap-add NET_RAW \
+    --device /dev/net/tun \
+    -e TS_AUTHKEY="${ts_authkey}" \
+    -e TS_HOSTNAME="${TS_HOSTNAME}" \
+    -e TAILSCALE_EXTRA_ARGS="--ssh" \
+    -e GIT_REPO_URL="git@github.com:${REPO}.git" \
+    -e GIT_BRANCH="${BRANCH}" \
+    -e WORKDIR="${WORKDIR}" \
+    -e REPO_DIR="${REPO_DIR}" \
+    -e ZELLIJ_SESSION="${NAME}-${SAFE_BRANCH}" \
+    -e GIT_CLONE_DEPTH="1" \
+    -v "${TS_VOL}:/var/lib/tailscale:Z" \
+    -v "${WORK_VOL}:${WORKDIR}:Z" \
+    -v "${HOME}/.ssh:/root/.ssh:ro,Z" \
+    "${IMAGE}" >/dev/null
+
+  log "Started ${CTR_NAME}"
+  log "Repo: ${REPO} (${BRANCH})"
+  log "Attach with:"
+  echo "  podman exec -it ${CTR_NAME} zellij attach ${NAME}-${SAFE_BRANCH}"
+  log "Or via Tailscale SSH once online:"
+  echo "  ssh root@${TS_HOSTNAME}"
+}
+
+down() {
+  log "Tearing down ${POD_NAME}"
+
+  if podman container exists "${CTR_NAME}"; then
+    podman rm -f "${CTR_NAME}" >/dev/null || true
+  fi
+
+  if podman pod exists "${POD_NAME}"; then
+    podman pod rm -f "${POD_NAME}" >/dev/null || true
+  fi
+
+  if podman volume exists "${TS_VOL}"; then
+    podman volume rm -f "${TS_VOL}" >/dev/null || true
+  fi
+
+  if podman volume exists "${WORK_VOL}"; then
+    podman volume rm -f "${WORK_VOL}" >/dev/null || true
+  fi
+
+  log "Removed pod, container, and storage for ${REPO} (${BRANCH})"
+}
+
+case "${ACTION}" in
+  up) up ;;
+  down) down ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
