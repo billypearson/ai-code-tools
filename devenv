@@ -136,7 +136,7 @@ up() {
     --device /dev/net/tun \
     -e TS_AUTHKEY="${ts_authkey}" \
     -e TS_HOSTNAME="${TS_HOSTNAME}" \
-    -e TAILSCALE_EXTRA_ARGS="--ssh" \
+    -e TAILSCALE_EXTRA_ARGS="--ssh --accept-dns=false" \
     -e GIT_REPO_URL="git@github.com:${REPO}.git" \
     -e GIT_BRANCH="${BRANCH}" \
     -e WORKDIR="${WORKDIR}" \
