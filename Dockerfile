@@ -1,18 +1,18 @@
 FROM node:24
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    gh \
-    vim \
-    ca-certificates \
-    python3 \
-    python3-pip \
-    python3-venv \
-    bubblewrap \
-    mosh \
-    jq \
-    openssh-client \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+  git \
+  gh \
+  vim \
+  ca-certificates \
+  python3 \
+  python3-pip \
+  python3-venv \
+  bubblewrap \
+  mosh \
+  jq \
+  openssh-client \
+  procps \
+  && rm -rf /var/lib/apt/lists/*
 
 # Create venv
 RUN python3 -m venv /opt/venv
@@ -43,7 +43,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
-    chmod 700 /root/.ssh
+  chmod 700 /root/.ssh
 
 RUN cat <<'EOF' >/etc/profile.d/git-prompt.sh
 parse_git_branch() {
@@ -68,10 +68,10 @@ esac
 EOF
 
 RUN curl -fsSL https://tailscale.com/install.sh | sh && \
-    rm -rf /var/lib/apt/lists/*
+  rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /workspace
 
 # Default shell
-ENTRYPOINT ["/frontdoor.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
