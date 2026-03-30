@@ -33,6 +33,7 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN npx get-shit-done-cc --claude --global
 RUN npx get-shit-done-cc --gemini --global
 RUN npx get-shit-done-cc --codex --global
+RUN npm install -g gsd-pi@latest
 
 # COPY requirements.txt requirements.txt
 # RUN python3 -m pip install --upgrade pip && \
@@ -43,7 +44,31 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
-  chmod 700 /root/.ssh
+  chmod 700 /root/.ssh && \
+  mkdir -p /root/.gsd/agent
+
+RUN cat <<'EOF' > /root/.gsd/agent/models.json
+{
+  "providers": {
+    "LiteLLM": {
+      "baseUrl": "http://10.70.0.199:4000",
+      "api": "openai-completions",
+      "apiKey": "sk-jwKsG-qNSq_RnwI15AGKig",
+      "models": [
+        {
+          "id": "glm-4.7-flash",
+          "name": "glm-4.7-flash (Local)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 256000,
+          "maxTokens": 100000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}
+EOF
 
 RUN cat <<'EOF' >/etc/profile.d/git-prompt.sh
 parse_git_branch() {
