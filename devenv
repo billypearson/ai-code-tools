@@ -4,6 +4,7 @@ set -Eeuo pipefail
 usage() {
   echo "Usage: devenv <up|down> <repo> <branch>"
   echo "Example: devenv up Pearson-Foundry/mpm-gsd main"
+  echo "Note: 'devenv down' requires TS_API_KEY and TS_TAILNET so it can remove the Tailscale device and revoke any generated auth key."
 }
 
 log() {
@@ -45,25 +46,27 @@ IMAGE="${DEVENV_IMAGE:-docker.io/viper799/ai-cli-tools:latest}"
 TS_HOSTNAME="${DEVENV_TS_HOSTNAME:-${POD_NAME}}"
 WORKDIR="/workspace"
 REPO_DIR="${WORKDIR}/repo"
+STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/devenv"
+STATE_FILE="${STATE_DIR}/${POD_NAME}.env"
+GENERATED_TS_KEY_ID=""
+DEVENV_DNS_SERVERS="${DEVENV_DNS_SERVERS:-1.1.1.1,8.8.8.8}"
 
 get_tailscale_authkey() {
-  # Priority 1: direct auth key provided
+  GENERATED_TS_KEY_ID=""
+
   if [ -n "${TS_AUTHKEY:-}" ]; then
     printf '%s\n' "${TS_AUTHKEY}"
     return 0
   fi
 
-  # Priority 2: file-based auth key
   if [ -n "${TAILSCALE_AUTHKEY_FILE:-}" ] && [ -f "${TAILSCALE_AUTHKEY_FILE}" ]; then
     cat "${TAILSCALE_AUTHKEY_FILE}"
     return 0
   fi
 
-  # Priority 3: generate via Tailscale API
   if [ -n "${TS_API_KEY:-}" ] && [ -n "${TS_TAILNET:-}" ]; then
     log "Generating Tailscale auth key via API for tailnet ${TS_TAILNET}"
 
-    # Build request payload (ephemeral=false for durable node)
     PAYLOAD=$(jq -n '{
       capabilities: {
         devices: {
@@ -84,6 +87,7 @@ get_tailscale_authkey() {
       -d "${PAYLOAD}")
 
     KEY=$(printf '%s' "${RESPONSE}" | jq -r '.key // empty')
+    KEY_ID=$(printf '%s' "${RESPONSE}" | jq -r '.id // empty')
 
     if [ -z "${KEY}" ]; then
       echo "Failed to generate Tailscale auth key" >&2
@@ -91,6 +95,7 @@ get_tailscale_authkey() {
       exit 1
     fi
 
+    GENERATED_TS_KEY_ID="${KEY_ID}"
     printf '%s\n' "${KEY}"
     return 0
   fi
@@ -99,9 +104,114 @@ get_tailscale_authkey() {
   exit 1
 }
 
+ensure_state_dir() {
+  mkdir -p "${STATE_DIR}"
+}
+
+save_state() {
+  ensure_state_dir
+  cat >"${STATE_FILE}" <<EOF
+TS_HOSTNAME=${TS_HOSTNAME}
+TS_TAILNET=${TS_TAILNET:-}
+GENERATED_TS_KEY_ID=${GENERATED_TS_KEY_ID:-}
+EOF
+}
+
+load_state() {
+  if [ -f "${STATE_FILE}" ]; then
+    # shellcheck disable=SC1090
+    . "${STATE_FILE}"
+  fi
+}
+
+
+clear_state() {
+  rm -f "${STATE_FILE}"
+}
+
+require_tailscale_api_context_for_cleanup() {
+  if [ -z "${TS_API_KEY:-}" ]; then
+    echo "TS_API_KEY must be set for 'devenv down' so the Tailscale device can be removed and any generated auth key can be revoked" >&2
+    exit 1
+  fi
+
+  if [ -z "${TS_TAILNET:-}" ]; then
+    if [ -n "${TS_TAILNET:-}" ]; then
+      :
+    elif [ -f "${STATE_FILE}" ]; then
+      load_state
+    fi
+  fi
+
+  if [ -z "${TS_TAILNET:-}" ]; then
+    echo "TS_TAILNET must be set or recorded in state for 'devenv down' so the Tailscale device can be removed and any generated auth key can be revoked" >&2
+    exit 1
+  fi
+}
+
+cleanup_tailscale_device() {
+  if [ -z "${TS_API_KEY:-}" ] || [ -z "${TS_TAILNET:-}" ]; then
+    log "TS_API_KEY or TS_TAILNET not set, skipping Tailscale device cleanup"
+    return 0
+  fi
+
+  log "Looking for Tailscale device ${TS_HOSTNAME} in tailnet ${TS_TAILNET}"
+  local response
+  response=$(curl -fsS \
+    "https://api.tailscale.com/api/v2/tailnet/${TS_TAILNET}/devices" \
+    -u "${TS_API_KEY}:")
+
+  mapfile -t device_ids < <(printf '%s' "${response}" | jq -r --arg host "${TS_HOSTNAME}" '
+    .devices[]? |
+    select(
+      .hostname == $host or
+      .name == $host or
+      (.name | startswith($host + "."))
+    ) |
+    .id
+  ')
+
+  if [ "${#device_ids[@]}" -eq 0 ]; then
+    log "No Tailscale device found for ${TS_HOSTNAME}"
+    return 0
+  fi
+
+  local id
+  for id in "${device_ids[@]}"; do
+    log "Removing Tailscale device ${id}"
+    curl -fsS -X DELETE "https://api.tailscale.com/api/v2/device/${id}" -u "${TS_API_KEY}:" >/dev/null
+  done
+}
+
+cleanup_tailscale_authkey() {
+  if [ -z "${TS_API_KEY:-}" ] || [ -z "${TS_TAILNET:-}" ]; then
+    log "TS_API_KEY or TS_TAILNET not set, skipping Tailscale auth key cleanup"
+    return 0
+  fi
+
+  if [ -z "${GENERATED_TS_KEY_ID:-}" ]; then
+    log "No generated Tailscale auth key id recorded, skipping auth key cleanup"
+    return 0
+  fi
+
+  log "Revoking generated Tailscale auth key ${GENERATED_TS_KEY_ID}"
+  curl -fsS -X DELETE \
+    "https://api.tailscale.com/api/v2/tailnet/${TS_TAILNET}/keys/${GENERATED_TS_KEY_ID}" \
+    -u "${TS_API_KEY}:" >/dev/null || true
+}
+
 ensure_pod() {
   if ! podman pod exists "${POD_NAME}"; then
-    podman pod create --name "${POD_NAME}" >/dev/null
+    local -a dns_args=()
+    local dns_server
+    IFS=',' read -r -a dns_list <<<"${DEVENV_DNS_SERVERS}"
+    for dns_server in "${dns_list[@]}"; do
+      if [ -n "${dns_server}" ]; then
+        dns_args+=(--dns "${dns_server}")
+      fi
+    done
+
+    podman pod create --name "${POD_NAME}" "${dns_args[@]}" >/dev/null
   fi
 }
 
@@ -113,6 +223,7 @@ ensure_volumes() {
 up() {
   local ts_authkey
   ts_authkey="$(get_tailscale_authkey)"
+  save_state
 
   ensure_pod
   ensure_volumes
@@ -158,6 +269,10 @@ up() {
 
 down() {
   log "Tearing down ${POD_NAME}"
+  load_state
+  require_tailscale_api_context_for_cleanup
+  cleanup_tailscale_device
+  cleanup_tailscale_authkey
 
   if podman container exists "${CTR_NAME}"; then
     podman rm -f "${CTR_NAME}" >/dev/null || true
@@ -175,6 +290,7 @@ down() {
     podman volume rm -f "${WORK_VOL}" >/dev/null || true
   fi
 
+  clear_state
   log "Removed pod, container, and storage for ${REPO} (${BRANCH})"
 }
 
