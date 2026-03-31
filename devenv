@@ -39,8 +39,15 @@ SAFE_BRANCH="$(printf '%s' "${BRANCH}" | tr '/:@' '---' | tr -cd '[:alnum:]-_.')
 
 POD_NAME="devenv-${SAFE_REPO}-${SAFE_BRANCH}"
 CTR_NAME="${POD_NAME}-workspace"
+CODE_NAME="${POD_NAME}-code-server"
+DIND_NAME="${POD_NAME}-dind"
 TS_VOL="${POD_NAME}-ts"
 WORK_VOL="${POD_NAME}-work"
+DOCKER_VOL="${POD_NAME}-docker"
+DOCKER_SOCK_VOL="${POD_NAME}-docker-sock"
+
+DOCKER_SOCK_DIR="/var/run/docker"
+DOCKER_SOCK="${DOCKER_SOCK_DIR}/docker.sock"
 
 IMAGE="${DEVENV_IMAGE:-docker.io/viper799/ai-cli-tools:latest}"
 TS_HOSTNAME="${DEVENV_TS_HOSTNAME:-${POD_NAME}}"
@@ -218,6 +225,26 @@ ensure_pod() {
 ensure_volumes() {
   podman volume exists "${TS_VOL}" || podman volume create "${TS_VOL}" >/dev/null
   podman volume exists "${WORK_VOL}" || podman volume create "${WORK_VOL}" >/dev/null
+  podman volume exists "${DOCKER_VOL}" || podman volume create "${DOCKER_VOL}" >/dev/null
+  podman volume exists "${DOCKER_SOCK_VOL}" || podman volume create "${DOCKER_SOCK_VOL}" >/dev/null
+}
+
+wait_for_docker() {
+  local attempts=30
+  local i
+
+  log "Waiting for Docker daemon in ${DIND_NAME}"
+  for ((i = 1; i <= attempts; i++)); do
+    if podman exec "${DIND_NAME}" docker info >/dev/null 2>&1; then
+      log "Docker daemon is ready in ${DIND_NAME}"
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Docker daemon in ${DIND_NAME} did not become ready in time" >&2
+  podman logs "${DIND_NAME}" >&2 || true
+  exit 1
 }
 
 up() {
@@ -230,10 +257,28 @@ up() {
 
   if podman container exists "${CTR_NAME}"; then
     log "Container already exists, starting it"
-    podman start "${CTR_NAME}" >/dev/null || true
     podman pod start "${POD_NAME}" >/dev/null || true
+    podman start "${DIND_NAME}" >/dev/null || true
+    wait_for_docker
+    podman start "${CTR_NAME}" >/dev/null || true
+    podman start "${CODE_NAME}" >/dev/null || true
     return 0
   fi
+
+  log "Creating ${DIND_NAME}"
+
+  podman run -d \
+    --name "${DIND_NAME}" \
+    --pod "${POD_NAME}" \
+    --restart unless-stopped \
+    --privileged \
+    -v "${DOCKER_VOL}:/var/lib/docker:Z" \
+    -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
+    -v /lib/modules:/lib/modules:ro \
+    docker:dind \
+    sh -c 'mkdir -p "${DOCKER_SOCK_DIR}" && exec dockerd --host="unix://${DOCKER_SOCK}"' >/dev/null
+
+  wait_for_docker
 
   log "Creating ${CTR_NAME}"
 
@@ -256,10 +301,31 @@ up() {
     -e GIT_CLONE_DEPTH="1" \
     -v "${TS_VOL}:/var/lib/tailscale:Z" \
     -v "${WORK_VOL}:${WORKDIR}:Z" \
+    -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
     -v "${HOME}/.ssh:/root/.ssh:rw,Z" \
     "${IMAGE}" >/dev/null
 
-  log "Started ${CTR_NAME}"
+  log "Creating ${CODE_NAME}"
+
+  podman run -d \
+    --name "${CODE_NAME}" \
+    --pod "${POD_NAME}" \
+    --restart unless-stopped \
+    --pull=always \
+    -e PASSWORD="${CODE_SERVER_PASSWORD:-}" \
+    -e TS_AUTHKEY="${ts_authkey}" \
+    -e TS_HOSTNAME="${TS_HOSTNAME}" \
+    -e TAILSCALE_EXTRA_ARGS="--ssh --accept-dns=false" \
+    -e GIT_REPO_URL="git@github.com:${REPO}.git" \
+    -e GIT_BRANCH="${BRANCH}" \
+    -e WORKDIR="${WORKDIR}" \
+    -e REPO_DIR="${REPO_DIR}" \
+    -v "${WORK_VOL}:${WORKDIR}:Z" \
+    -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
+    -v "${HOME}/.ssh:/root/.ssh:rw,Z" \
+    "${IMAGE}" code-server >/dev/null
+
+  log "Started ${CTR_NAME} and ${CODE_NAME}"
   log "Repo: ${REPO} (${BRANCH})"
   log "Attach with:"
   echo "  podman exec -it ${CTR_NAME} zellij attach ${NAME}-${SAFE_BRANCH}"
@@ -278,6 +344,14 @@ down() {
     podman rm -f "${CTR_NAME}" >/dev/null || true
   fi
 
+  if podman container exists "${CODE_NAME}"; then
+    podman rm -f "${CODE_NAME}" >/dev/null || true
+  fi
+
+  if podman container exists "${DIND_NAME}"; then
+    podman rm -f "${DIND_NAME}" >/dev/null || true
+  fi
+
   if podman pod exists "${POD_NAME}"; then
     podman pod rm -f "${POD_NAME}" >/dev/null || true
   fi
@@ -288,6 +362,14 @@ down() {
 
   if podman volume exists "${WORK_VOL}"; then
     podman volume rm -f "${WORK_VOL}" >/dev/null || true
+  fi
+
+  if podman volume exists "${DOCKER_VOL}"; then
+    podman volume rm -f "${DOCKER_VOL}" >/dev/null || true
+  fi
+
+  if podman volume exists "${DOCKER_SOCK_VOL}"; then
+    podman volume rm -f "${DOCKER_SOCK_VOL}" >/dev/null || true
   fi
 
   clear_state
