@@ -58,12 +58,66 @@ RUN cat <<'EOF' > /root/.gsd/agent/models.json
         {
           "id": "glm-4.7-flash",
           "name": "glm-4.7-flash (Local)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 144000,
+          "maxTokens": 144000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+	{
+          "id": "qwen3.5:35b-a3b",
+          "name": "qwen3.5:35b-a3b (Local)",
           "reasoning": true,
           "input": ["text"],
           "contextWindow": 256000,
           "maxTokens": 100000,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
-        }
+	},
+	{
+          "id": "qwen2.5-coder:14b",
+          "name": "qwen2.5-coder:14b (Local)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 32000,
+          "maxTokens": 32000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+	},
+	{
+          "id": "qwen2.5-coder:7b",
+          "name": "qwen2.5-coder:14b (Local)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 32000,
+          "maxTokens": 32000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+	},
+	{
+          "id": "qwen3-coder:30b-a3b-q4_K_M",
+          "name": "qwen3-coder:30b-a3b-q4_K_M (Local)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 144000,
+          "maxTokens": 144000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }	
+	},
+	{
+          "id": "gpt-5.3-codex",
+          "name": "gpt-5.3-codex (Local)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 256000,
+          "maxTokens": 256000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }	
+	},
+	{
+          "id": "nemotron-cascade-2:30b",
+          "name": "nemotron-cascade-2:30b (Local)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 256000,
+          "maxTokens": 256000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }		
+	}
       ]
     }
   }
