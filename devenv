@@ -275,8 +275,8 @@ up() {
     -v "${DOCKER_VOL}:/var/lib/docker:Z" \
     -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
     -v /lib/modules:/lib/modules:ro \
-    docker:dind \
-    sh -c 'mkdir -p "${DOCKER_SOCK_DIR}" && exec dockerd --host="unix://${DOCKER_SOCK}"' >/dev/null
+    docker.io/library/docker:dind \
+    sh -c 'mkdir -p /var/run/docker && exec dockerd --host=unix:///var/run/docker/docker.sock' >/dev/null
 
   wait_for_docker
 
