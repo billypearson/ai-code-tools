@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   openssh-client \
   procps \
   docker.io \
-  docker-compose-plugin \
+  docker-compose \
   && rm -rf /var/lib/apt/lists/*
 
 # Create venv
