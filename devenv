@@ -235,7 +235,7 @@ wait_for_docker() {
 
   log "Waiting for Docker daemon in ${DIND_NAME}"
   for ((i = 1; i <= attempts; i++)); do
-    if podman exec "${DIND_NAME}" docker info >/dev/null 2>&1; then
+    if podman exec "${DIND_NAME}" docker -H "unix://${DOCKER_SOCK}" info >/dev/null 2>&1; then
       log "Docker daemon is ready in ${DIND_NAME}"
       return 0
     fi
@@ -278,7 +278,7 @@ up() {
     docker.io/library/docker:dind \
     sh -c 'mkdir -p /var/run/docker && exec dockerd --host=unix:///var/run/docker/docker.sock' >/dev/null
 
-  wait_for_docker
+  #wait_for_docker
 
   log "Creating ${CTR_NAME}"
 
@@ -299,6 +299,7 @@ up() {
     -e REPO_DIR="${REPO_DIR}" \
     -e ZELLIJ_SESSION="${NAME}-${SAFE_BRANCH}" \
     -e GIT_CLONE_DEPTH="1" \
+    -e DOCKER_HOST="unix://${DOCKER_SOCK}" \
     -v "${TS_VOL}:/var/lib/tailscale:Z" \
     -v "${WORK_VOL}:${WORKDIR}:Z" \
     -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
@@ -320,6 +321,7 @@ up() {
     -e GIT_BRANCH="${BRANCH}" \
     -e WORKDIR="${WORKDIR}" \
     -e REPO_DIR="${REPO_DIR}" \
+    -e DOCKER_HOST="unix://${DOCKER_SOCK}" \
     -v "${WORK_VOL}:${WORKDIR}:Z" \
     -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
     -v "${HOME}/.ssh:/root/.ssh:rw,Z" \
@@ -373,7 +375,7 @@ down() {
   fi
 
   clear_state
-  log "Removed pod, container, and storage for ${REPO} (${BRANCH})"
+  log "Removed pod, containers, and storage for ${REPO} (${BRANCH})"
 }
 
 case "${ACTION}" in
