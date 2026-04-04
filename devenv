@@ -303,7 +303,8 @@ up() {
     -v "${TS_VOL}:/var/lib/tailscale:Z" \
     -v "${WORK_VOL}:${WORKDIR}:Z" \
     -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
-    -v "${HOME}/.ssh:/root/.ssh:rw,Z" \
+    -v "${HOME}/.ssh:/root/.ssh:rw,z" \
+    -v "/opt/codex:/root/.codex:rw,z" \
     "${IMAGE}" >/dev/null
 
   log "Creating ${CODE_NAME}"
