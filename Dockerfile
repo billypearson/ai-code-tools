@@ -1,5 +1,8 @@
 FROM node:24
+
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
+  locales \
   git \
   gh \
   vim \
@@ -9,12 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-venv \
   bubblewrap \
   mosh \
+  tmux \
   jq \
   openssh-client \
   procps \
   docker.io \
   docker-compose \
+  && sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+  && locale-gen en_US.UTF-8 \
+  && update-locale LANG=en_US.UTF-8 \
   && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 # Create venv
 RUN python3 -m venv /opt/venv
@@ -43,6 +53,7 @@ RUN npm install -g gsd-pi@latest
 
 # copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
+COPY tmux.conf /root/.tmux.conf
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
@@ -150,6 +161,8 @@ EOF
 
 RUN curl -fsSL https://tailscale.com/install.sh | sh && \
   rm -rf /var/lib/apt/lists/*
+
+RUN echo "alias tmux='tmux new-session -A -s main'" >> /root/.bashrc
 
 # Set working directory
 WORKDIR /workspace
