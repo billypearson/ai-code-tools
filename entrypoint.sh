@@ -39,8 +39,14 @@ trap cleanup EXIT INT TERM
 : "${GIT_CLONE_DEPTH:=1}"
 : "${REPO_REMOTE_NAME:=origin}"
 : "${GIT_RESET_HARD:=0}"
+: "${DOCKER_HOST:=unix:///var/run/docker/docker.sock}"
 
 mkdir -p "${TS_STATE_DIR}" /var/run/tailscale "${WORKDIR}"
+
+# Ensure interactive shells (including Tailscale SSH/Mosh sessions) get DOCKER_HOST.
+cat >/etc/profile.d/docker-host.sh <<EOF
+export DOCKER_HOST="${DOCKER_HOST}"
+EOF
 
 start_tailscaled() {
   require_cmd tailscaled
