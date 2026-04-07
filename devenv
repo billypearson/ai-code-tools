@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "Usage: devenv <up|down> <repo> <branch>"
-  echo "Example: devenv up Pearson-Foundry/mpm-gsd main"
+  echo "Usage: devenv [--network <name>] [--ip <addr>] <up|down> <repo> <branch>"
+  echo "Example: devenv --network devnet --ip 10.88.0.25 up Pearson-Foundry/mpm-gsd main"
   echo "Note: 'devenv down' requires TS_API_KEY and TS_TAILNET so it can remove the Tailscale device and revoke any generated auth key."
 }
 
@@ -17,6 +17,34 @@ require_cmd() {
     exit 1
   }
 }
+
+POD_NETWORK=""
+POD_IP=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --network)
+      POD_NETWORK="${2:-}"
+      shift 2
+      ;;
+    --ip)
+      POD_IP="${2:-}"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --*)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 if [ "$#" -ne 3 ]; then
   usage
@@ -218,7 +246,15 @@ ensure_pod() {
       fi
     done
 
-    podman pod create --name "${POD_NAME}" "${dns_args[@]}" >/dev/null
+    local -a net_args=()
+    if [ -n "${POD_NETWORK}" ]; then
+      net_args+=(--network "${POD_NETWORK}")
+    fi
+    if [ -n "${POD_IP}" ]; then
+      net_args+=(--ip "${POD_IP}")
+    fi
+
+    podman pod create --name "${POD_NAME}" "${dns_args[@]}" "${net_args[@]}" >/dev/null
   fi
 }
 
