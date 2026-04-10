@@ -29,8 +29,13 @@ ENV LC_ALL=en_US.UTF-8
 # Create venv
 RUN python3 -m venv /opt/venv
 
+
 # Put venv first in PATH
 ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python testing dependencies
+RUN pip install --upgrade pip && \
+  pip install pytest
 
 # Copy persisted Codex auth/config files into container
 COPY zellij /usr/local/bin/zellij
