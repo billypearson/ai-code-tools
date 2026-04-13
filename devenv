@@ -76,6 +76,9 @@ DOCKER_SOCK_VOL="${POD_NAME}-docker-sock"
 
 DOCKER_SOCK_DIR="/var/run/docker"
 DOCKER_SOCK="${DOCKER_SOCK_DIR}/docker.sock"
+SKILLS_REPO_URL="${DEVENV_SKILLS_REPO_URL:-git@github.com:Pearson-Foundry/mpm-skills2.git}"
+SKILLS_REPO_DIR="${WORKDIR}/mpm-skills2"
+SKILLS_INSTALL_SCRIPT="${DEVENV_SKILLS_INSTALL_SCRIPT:-scripts/install.sh}"
 
 IMAGE="${DEVENV_IMAGE:-docker.io/viper799/ai-cli-tools:latest}"
 TS_HOSTNAME="${DEVENV_TS_HOSTNAME:-${POD_NAME}}"
@@ -283,6 +286,28 @@ wait_for_docker() {
   exit 1
 }
 
+install_codex_skills() {
+  log "Installing Codex skills into ${REPO_DIR}"
+
+  podman exec "${CTR_NAME}" bash -lc '
+    set -Eeuo pipefail
+    cd "${WORKDIR}"
+
+    if [ -d "${SKILLS_REPO_DIR}/.git" ]; then
+      rm -rf "${SKILLS_REPO_DIR}"
+    fi
+
+    git clone "${SKILLS_REPO_URL}" "${SKILLS_REPO_DIR}"
+    cd "${SKILLS_REPO_DIR}"
+
+    if [ ! -x "${SKILLS_INSTALL_SCRIPT}" ] && [ -f "${SKILLS_INSTALL_SCRIPT}" ]; then
+      chmod +x "${SKILLS_INSTALL_SCRIPT}"
+    fi
+
+    "./${SKILLS_INSTALL_SCRIPT}" "${REPO_DIR}"
+  '
+}
+
 up() {
   local ts_authkey
   ts_authkey="$(get_tailscale_authkey)"
@@ -298,6 +323,7 @@ up() {
     wait_for_docker
     podman start "${CTR_NAME}" >/dev/null || true
     podman start "${CODE_NAME}" >/dev/null || true
+    install_codex_skills
     return 0
   fi
 
@@ -333,6 +359,9 @@ up() {
     -e GIT_BRANCH="${BRANCH}" \
     -e WORKDIR="${WORKDIR}" \
     -e REPO_DIR="${REPO_DIR}" \
+    -e SKILLS_REPO_URL="${SKILLS_REPO_URL}" \
+    -e SKILLS_REPO_DIR="${SKILLS_REPO_DIR}" \
+    -e SKILLS_INSTALL_SCRIPT="${SKILLS_INSTALL_SCRIPT}" \
     -e ZELLIJ_SESSION="${NAME}-${SAFE_BRANCH}" \
     -e GIT_CLONE_DEPTH="1" \
     -e DOCKER_HOST="unix://${DOCKER_SOCK}" \
@@ -358,11 +387,16 @@ up() {
     -e GIT_BRANCH="${BRANCH}" \
     -e WORKDIR="${WORKDIR}" \
     -e REPO_DIR="${REPO_DIR}" \
+    -e SKILLS_REPO_URL="${SKILLS_REPO_URL}" \
+    -e SKILLS_REPO_DIR="${SKILLS_REPO_DIR}" \
+    -e SKILLS_INSTALL_SCRIPT="${SKILLS_INSTALL_SCRIPT}" \
     -e DOCKER_HOST="unix://${DOCKER_SOCK}" \
     -v "${WORK_VOL}:${WORKDIR}:Z" \
     -v "${DOCKER_SOCK_VOL}:${DOCKER_SOCK_DIR}:Z" \
     -v "${HOME}/.ssh:/root/.ssh:rw,Z" \
     "${IMAGE}" code-server >/dev/null
+
+  install_codex_skills
 
   log "Started ${CTR_NAME} and ${CODE_NAME}"
   log "Repo: ${REPO} (${BRANCH})"
