@@ -2,9 +2,8 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "Usage: devenv [--network <name>] [--ip <addr>] <up|down|ls> <repo> <branch>"
+  echo "Usage: devenv [--network <name>] [--ip <addr>] <up|down> <repo> <branch>"
   echo "Example: devenv --network devnet --ip 10.88.0.25 up Pearson-Foundry/mpm-gsd main"
-  echo "List running environments: devenv ls"
   echo "Note: 'devenv down' requires TS_API_KEY and TS_TAILNET so it can remove the Tailscale device and revoke any generated auth key."
 }
 
@@ -47,17 +46,14 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$1" = "ls" ]; then
-  ACTION="ls"
-else
-  if [ "$#" -ne 3 ]; then
-    usage
-    exit 1
-  fi
-  ACTION="$1"
-  REPO="$2"
-  BRANCH="$3"
+if [ "$#" -ne 3 ]; then
+  usage
+  exit 1
 fi
+
+ACTION="$1"
+REPO="$2"
+BRANCH="$3"
 
 require_cmd podman
 require_cmd jq
@@ -453,31 +449,9 @@ down() {
   log "Removed pod, containers, and storage for ${REPO} (${BRANCH})"
 }
 
-ls() {
-  log "Listing active devenv environments"
-
-  podman pod ls --format json | jq -r '
-    .[] | select(.Name | startswith("devenv-")) | .Name
-  ' | while read -r pod; do
-    # Extract repo and branch back from pod name
-    # Format: devenv-<repo>-<branch>
-    name="${pod#devenv-}"
-
-    # Attempt to split last dash as branch separator
-    repo_part="${name%-*}"
-    branch_part="${name##*-}"
-
-    # Convert repo back (best effort)
-    repo_guess="$(echo "$repo_part" | sed 's/---/\//g')"
-
-    echo "devenv down ${repo_guess} ${branch_part}"
-  done
-}
-
 case "${ACTION}" in
   up) up ;;
   down) down ;;
-  ls) ls ;;
   *)
     usage
     exit 1
