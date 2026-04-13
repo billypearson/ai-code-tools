@@ -37,24 +37,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip && \
   pip install pytest
 
-# Copy persisted Codex auth/config files into container
-COPY zellij /usr/local/bin/zellij
-RUN chmod +x /usr/local/bin/zellij
-
 # Install Codex CLI globally
 RUN npm install -g npm@latest
 RUN npm install -g @openai/codex
-RUN npm i -g @openai/codex
 RUN npm install -g @google/gemini-cli
 RUN npm install -g @anthropic-ai/claude-code
-RUN npx get-shit-done-cc --claude --global
-RUN npx get-shit-done-cc --gemini --global
-RUN npx get-shit-done-cc --codex --global
-RUN npm install -g gsd-pi@latest
-
-# COPY requirements.txt requirements.txt
-# RUN python3 -m pip install --upgrade pip && \
-#     pip install -r requirements.txt
 
 # copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
@@ -62,85 +49,8 @@ COPY tmux.conf /root/.tmux.conf
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /root/.ssh /workspace && \
-  chmod 700 /root/.ssh && \
-  mkdir -p /root/.gsd/agent
+  chmod 700 /root/.ssh
 
-RUN cat <<'EOF' > /root/.gsd/agent/models.json
-{
-  "providers": {
-    "LiteLLM": {
-      "baseUrl": "http://10.70.0.199:4000",
-      "api": "openai-completions",
-      "apiKey": "sk-jwKsG-qNSq_RnwI15AGKig",
-      "models": [
-        {
-          "id": "glm-4.7-flash",
-          "name": "glm-4.7-flash (Local)",
-          "reasoning": false,
-          "input": ["text"],
-          "contextWindow": 144000,
-          "maxTokens": 144000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
-        },
-	{
-          "id": "qwen3.5:35b-a3b",
-          "name": "qwen3.5:35b-a3b (Local)",
-          "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 256000,
-          "maxTokens": 100000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
-	},
-	{
-          "id": "qwen2.5-coder:14b",
-          "name": "qwen2.5-coder:14b (Local)",
-          "reasoning": false,
-          "input": ["text"],
-          "contextWindow": 32000,
-          "maxTokens": 32000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
-	},
-	{
-          "id": "qwen2.5-coder:7b",
-          "name": "qwen2.5-coder:14b (Local)",
-          "reasoning": false,
-          "input": ["text"],
-          "contextWindow": 32000,
-          "maxTokens": 32000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
-	},
-	{
-          "id": "qwen3-coder:30b-a3b-q4_K_M",
-          "name": "qwen3-coder:30b-a3b-q4_K_M (Local)",
-          "reasoning": false,
-          "input": ["text"],
-          "contextWindow": 144000,
-          "maxTokens": 144000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }	
-	},
-	{
-          "id": "gpt-5.3-codex",
-          "name": "gpt-5.3-codex (Local)",
-          "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 256000,
-          "maxTokens": 256000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }	
-	},
-	{
-          "id": "nemotron-cascade-2:30b",
-          "name": "nemotron-cascade-2:30b (Local)",
-          "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 256000,
-          "maxTokens": 256000,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }		
-	}
-      ]
-    }
-  }
-}
-EOF
 
 RUN cat <<'EOF' >/etc/profile.d/git-prompt.sh
 parse_git_branch() {
@@ -169,6 +79,42 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh && \
 
 RUN echo "alias tmux='tmux new-session -A -s main'" >> /root/.bashrc
 
+RUN cat <<'EOF' >> /root/.bashrc
+tmux_repo() {
+    local repo_dir="/workspace/repo"
+
+    if [ ! -d "$repo_dir" ]; then
+        echo "Directory not found: $repo_dir"
+        return 1
+    fi
+
+    # Start tmux server if not already running
+    tmux start-server
+
+    # main session
+    if ! tmux has-session -t main 2>/dev/null; then
+        tmux new-session -d -s main -c "$repo_dir"
+    fi
+
+    # codex-cloud session
+    if ! tmux has-session -t codex-cloud 2>/dev/null; then
+        tmux new-session -d -s codex-cloud -c "$repo_dir"
+        tmux send-keys -t codex-cloud 'codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox' C-m
+    fi
+
+    # codex-local session
+    if ! tmux has-session -t codex-local 2>/dev/null; then
+        tmux new-session -d -s codex-local -c "$repo_dir"
+        tmux send-keys -t codex-local 'codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -p local -m glm-4.7-flash' C-m
+    fi
+
+    # Attach to main session
+    tmux attach-session -t main
+}
+
+alias worktmux='tmux_repo'
+
+EOF
 # Set working directory
 WORKDIR /workspace
 
