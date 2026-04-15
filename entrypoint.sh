@@ -41,7 +41,7 @@ trap cleanup EXIT INT TERM
 : "${GIT_RESET_HARD:=0}"
 : "${DOCKER_HOST:=unix:///var/run/docker/docker.sock}"
 
-mkdir -p "${TS_STATE_DIR}" /var/run/tailscale "${WORKDIR}"
+mkdir -p "${WORKDIR}"
 
 # Ensure interactive shells (including Tailscale SSH/Mosh sessions) get DOCKER_HOST.
 cat >/etc/profile.d/docker-host.sh <<EOF
@@ -172,6 +172,7 @@ show_connection_info() {
 
 main() {
   if [ -n "${TS_AUTHKEY}" ]; then
+    mkdir -p "${TS_STATE_DIR}" /var/run/tailscale
     start_tailscaled
     wait_for_socket
     tailscale_up
