@@ -27,7 +27,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Required / optional config
-: "${TS_AUTHKEY:?TS_AUTHKEY is required}"
+: "${TS_AUTHKEY:=}"
 : "${TS_STATE_DIR:=/var/lib/tailscale}"
 : "${TS_SOCKET:=/var/run/tailscale/tailscaled.sock}"
 : "${TS_HOSTNAME:=node24-ai-tools}"
@@ -162,15 +162,23 @@ bootstrap_zellij() {
 
 show_connection_info() {
   local name="${TS_HOSTNAME}"
+  if [ -z "${TS_AUTHKEY}" ]; then
+    log "TS_AUTHKEY not set, skipping Tailscale connection info"
+    return 0
+  fi
   log "Connect with: ssh root@${name}"
   log "Then attach with: zellij attach ${ZELLIJ_SESSION}  # prompt will show cwd and git branch when inside a repo"
 }
 
 main() {
-  start_tailscaled
-  wait_for_socket
-  tailscale_up
-  wait_for_tailscale
+  if [ -n "${TS_AUTHKEY}" ]; then
+    start_tailscaled
+    wait_for_socket
+    tailscale_up
+    wait_for_tailscale
+  else
+    log "TS_AUTHKEY not set, skipping Tailscale startup"
+  fi
   clone_or_update_repo
   bootstrap_zellij
   show_connection_info
@@ -181,7 +189,9 @@ main() {
     exec "$@"
   fi
 
-  wait "${TAILSCALED_PID}"
+  if [ -n "${TAILSCALED_PID:-}" ]; then
+    wait "${TAILSCALED_PID}"
+  fi
 }
 
 main "$@"
